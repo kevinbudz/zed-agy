@@ -36,6 +36,9 @@ pub const PROVIDER_NAME: LanguageModelProviderName =
 
 const ANTIGRAVITY_CLIENT_ID_ENV_VAR: &str = "ZED_ANTIGRAVITY_CLIENT_ID";
 const ANTIGRAVITY_CLIENT_SECRET_ENV_VAR: &str = "ZED_ANTIGRAVITY_CLIENT_SECRET";
+const ANTIGRAVITY_DEFAULT_CLIENT_ID: &str =
+    "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
+const ANTIGRAVITY_DEFAULT_CLIENT_SECRET: &str = "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";
 const ANTIGRAVITY_SCOPES: &[&str] = &[
     "https://www.googleapis.com/auth/cloud-platform",
     "https://www.googleapis.com/auth/userinfo.email",
@@ -50,16 +53,14 @@ const CREDENTIALS_KEY: &str = "antigravity-oauth";
 const SKIP_THOUGHT_SIGNATURE: &str = "skip_thought_signature_validator";
 const MIN_THOUGHT_SIGNATURE_LENGTH: usize = 50;
 
-fn antigravity_client_id() -> Result<String> {
-    std::env::var(ANTIGRAVITY_CLIENT_ID_ENV_VAR).with_context(|| {
-        format!("{ANTIGRAVITY_CLIENT_ID_ENV_VAR} must be set to sign in to Google Antigravity")
-    })
+fn antigravity_client_id() -> String {
+    std::env::var(ANTIGRAVITY_CLIENT_ID_ENV_VAR)
+        .unwrap_or_else(|_| ANTIGRAVITY_DEFAULT_CLIENT_ID.to_string())
 }
 
-fn antigravity_client_secret() -> Result<String> {
-    std::env::var(ANTIGRAVITY_CLIENT_SECRET_ENV_VAR).with_context(|| {
-        format!("{ANTIGRAVITY_CLIENT_SECRET_ENV_VAR} must be set to sign in to Google Antigravity")
-    })
+fn antigravity_client_secret() -> String {
+    std::env::var(ANTIGRAVITY_CLIENT_SECRET_ENV_VAR)
+        .unwrap_or_else(|_| ANTIGRAVITY_DEFAULT_CLIENT_SECRET.to_string())
 }
 
 pub use settings::AntigravityAvailableModel as AvailableModel;
@@ -1428,8 +1429,8 @@ async fn refresh_token(
     client: &Arc<dyn HttpClient>,
     refresh_token: &str,
 ) -> Result<AntigravityCredentials, RefreshError> {
-    let client_id = antigravity_client_id().map_err(RefreshError::Fatal)?;
-    let client_secret = antigravity_client_secret().map_err(RefreshError::Fatal)?;
+    let client_id = antigravity_client_id();
+    let client_secret = antigravity_client_secret();
 
     let body = form_urlencoded::Serializer::new(String::new())
         .append_pair("grant_type", "refresh_token")
@@ -1639,8 +1640,8 @@ async fn do_oauth_flow(
 
     let mut auth_url =
         url::Url::parse("https://accounts.google.com/o/oauth2/v2/auth").expect("valid URL");
-    let client_id = antigravity_client_id()?;
-    let client_secret = antigravity_client_secret()?;
+    let client_id = antigravity_client_id();
+    let client_secret = antigravity_client_secret();
 
     auth_url
         .query_pairs_mut()
