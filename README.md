@@ -18,3 +18,9 @@ I do not intend on packaging binaries for this fork. Please refer to the 'Instal
 - [x] Add a matching icon for Antigravity.
 - [x] Align context windows with Antigravity.
 - [ ] Add provider support for other services like Cursor. (not ACP)
+
+---
+
+### Credits
+
+- [NoeFabris](https://github.com/NoeFabris) for their [opencode-antigravity-auth](https://github.com/NoeFabris/opencode-antigravity-auth) repository. A lot of logic is taken from that.
