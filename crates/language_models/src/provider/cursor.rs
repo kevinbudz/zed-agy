@@ -86,95 +86,41 @@ impl Drop for ProxyProcess {
     }
 }
 
-fn find_opencode_cursor_dir() -> Option<PathBuf> {
-    // 1. Env var ZED_OPENCODE_CURSOR_DIR or OPENCODE_CURSOR_DIR
-    if let Ok(val) =
-        std::env::var("ZED_OPENCODE_CURSOR_DIR").or_else(|_| std::env::var("OPENCODE_CURSOR_DIR"))
-    {
+fn resolve_cursor_proxy_binary() -> Option<PathBuf> {
+    if let Ok(val) = std::env::var("ZED_CURSOR_PROXY_PATH") {
         let path = PathBuf::from(val);
-        if path.join("package.json").exists() {
+        if path.exists() {
             return Some(path);
         }
     }
 
-    // 2. Check current directory and up to 5 parent directories
-    if let Ok(mut current) = std::env::current_dir() {
-        for _ in 0..5 {
-            let candidate = current.join("opencode-cursor");
-            if candidate.join("package.json").exists() {
-                return Some(candidate);
-            }
-            if let Some(parent) = current.parent() {
-                current = parent.to_path_buf();
-            } else {
-                break;
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let sibling = dir.join("cursor-proxy");
+            if sibling.exists() {
+                return Some(sibling);
             }
         }
     }
 
-    // 3. Check relative to the executable path
-    if let Ok(exe_path) = std::env::current_exe() {
-        let mut dir = exe_path.parent();
-        for _ in 0..5 {
-            if let Some(d) = dir {
-                let candidate = d.join("opencode-cursor");
-                if candidate.join("package.json").exists() {
-                    return Some(candidate);
-                }
-                let sibling_candidate = d.join("../opencode-cursor");
-                if sibling_candidate.join("package.json").exists() {
-                    if let Ok(canonical) = sibling_candidate.canonicalize() {
-                        return Some(canonical);
-                    }
-                }
-                dir = d.parent();
-            } else {
-                break;
-            }
-        }
-    }
-
-    None
+    which::which("cursor-proxy").ok()
 }
 
 fn start_cursor_proxy(cx: &mut App) -> Option<ProxyProcess> {
-    let opencode_cursor_dir = find_opencode_cursor_dir()?;
-    log::info!(
-        "Found opencode-cursor directory at: {:?}",
-        opencode_cursor_dir
-    );
+    let proxy_binary = resolve_cursor_proxy_binary()?;
+    log::info!("Found cursor-proxy binary at: {:?}", proxy_binary);
 
-    let node_modules_exists = opencode_cursor_dir.join("node_modules").exists();
-
-    let mut cmd = if cfg!(target_os = "windows") {
-        let mut c = smol::process::Command::new("powershell");
-        c.arg("-Command");
-        if !node_modules_exists {
-            c.arg("npm install; npx tsx scripts/run-proxy.ts");
-        } else {
-            c.arg("npx tsx scripts/run-proxy.ts");
-        }
-        c
-    } else {
-        let mut c = smol::process::Command::new("sh");
-        c.arg("-c");
-        if !node_modules_exists {
-            c.arg("npm install && npx tsx scripts/run-proxy.ts");
-        } else {
-            c.arg("npx tsx scripts/run-proxy.ts");
-        }
-        c
-    };
-
-    cmd.current_dir(&opencode_cursor_dir)
-        .env("CURSOR_ACP_REUSE_EXISTING_PROXY", "false")
+    let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut cmd = smol::process::Command::new(&proxy_binary);
+    cmd.env("ZED_WORKSPACE_ROOT", &workspace)
+        .env("CURSOR_PROXY_FORCE", "true")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
     match cmd.spawn() {
         Ok(mut child) => {
-            log::info!("Successfully spawned Cursor Proxy process");
+            log::info!("Successfully spawned Rust cursor-proxy process");
 
             if let Some(stdout) = child.stdout.take() {
                 cx.spawn(async move |_cx| {
@@ -203,7 +149,7 @@ fn start_cursor_proxy(cx: &mut App) -> Option<ProxyProcess> {
             Some(ProxyProcess { child })
         }
         Err(err) => {
-            log::error!("Failed to spawn Cursor Proxy process: {:?}", err);
+            log::error!("Failed to spawn cursor-proxy process: {:?}", err);
             None
         }
     }

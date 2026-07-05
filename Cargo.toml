@@ -44,6 +44,7 @@ members = [
     "crates/copilot_chat",
     "crates/crashes",
     "crates/credentials_provider",
+    "crates/cursor_proxy",
     "crates/csv_preview",
     "crates/dap",
     "crates/dap_adapters",
