@@ -15,6 +15,6 @@ I do not intend on packaging binaries for this fork. Please refer to the 'Instal
 - [Building Zed for Windows](./docs/src/development/windows.md)
 
 ### Planned
-[x] Add a matching icon for Antigravity.
-[x] Align context windows with Antigravity.
-[] Add provider support for other services like Cursor. (not ACP)
+- [x] Add a matching icon for Antigravity.
+- [x] Align context windows with Antigravity.
+- [ ] Add provider support for other services like Cursor. (not ACP)
