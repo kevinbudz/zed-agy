@@ -5,12 +5,12 @@ use settings::RegisterSetting;
 
 use crate::provider::{
     anthropic, anthropic::AnthropicSettings, anthropic_compatible::AnthropicCompatibleSettings,
-    bedrock, bedrock::AmazonBedrockSettings, cloud::ZedDotDevSettings, deepseek::DeepSeekSettings,
-    google::GoogleSettings, llama_cpp::LlamaCppSettings, lmstudio::LmStudioSettings, mistral,
-    mistral::MistralSettings, ollama::OllamaSettings, open_ai::OpenAiSettings,
-    open_ai_compatible::OpenAiCompatibleSettings, open_router, open_router::OpenRouterSettings,
-    opencode, opencode::OpenCodeSettings, resolve_custom_headers,
-    vercel_ai_gateway::VercelAiGatewaySettings, x_ai::XAiSettings,
+    antigravity::AntigravitySettings, bedrock, bedrock::AmazonBedrockSettings,
+    cloud::ZedDotDevSettings, deepseek::DeepSeekSettings, google::GoogleSettings,
+    llama_cpp::LlamaCppSettings, lmstudio::LmStudioSettings, mistral, mistral::MistralSettings,
+    ollama::OllamaSettings, open_ai::OpenAiSettings, open_ai_compatible::OpenAiCompatibleSettings,
+    open_router, open_router::OpenRouterSettings, opencode, opencode::OpenCodeSettings,
+    resolve_custom_headers, vercel_ai_gateway::VercelAiGatewaySettings, x_ai::XAiSettings,
 };
 
 #[derive(Debug, RegisterSetting)]
@@ -20,6 +20,7 @@ pub struct AllLanguageModelSettings {
     pub bedrock: AmazonBedrockSettings,
     pub deepseek: DeepSeekSettings,
     pub google: GoogleSettings,
+    pub antigravity: AntigravitySettings,
     pub llama_cpp: LlamaCppSettings,
     pub lmstudio: LmStudioSettings,
     pub mistral: MistralSettings,
@@ -54,6 +55,7 @@ impl settings::Settings for AllLanguageModelSettings {
         let bedrock = language_models.bedrock.unwrap();
         let deepseek = language_models.deepseek.unwrap();
         let google = language_models.google.unwrap();
+        let antigravity = language_models.antigravity.unwrap_or_default();
         let llama_cpp = language_models.llama_cpp.unwrap();
         let lmstudio = language_models.lmstudio.unwrap();
         let mistral = language_models.mistral.unwrap();
@@ -118,6 +120,13 @@ impl settings::Settings for AllLanguageModelSettings {
                 api_url: google.api_url.unwrap(),
                 available_models: google.available_models.unwrap_or_default(),
                 custom_headers: custom_headers_from("Google AI", google.custom_headers, &[]),
+            },
+            antigravity: AntigravitySettings {
+                api_url: antigravity.api_url.unwrap_or_else(|| {
+                    "https://daily-cloudcode-pa.sandbox.googleapis.com".to_string()
+                }),
+                available_models: antigravity.available_models.unwrap_or_default(),
+                custom_headers: custom_headers_from("Antigravity", antigravity.custom_headers, &[]),
             },
             llama_cpp: LlamaCppSettings {
                 api_url: llama_cpp.api_url.unwrap(),

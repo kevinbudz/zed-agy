@@ -4,6 +4,7 @@ use http_client::http::{HeaderName, HeaderValue};
 
 pub mod anthropic;
 pub mod anthropic_compatible;
+pub mod antigravity;
 pub mod api_compatible;
 pub mod bedrock;
 pub mod cloud;
