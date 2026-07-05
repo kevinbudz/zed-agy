@@ -16,6 +16,7 @@ pub struct AllLanguageModelSettingsContent {
     pub deepseek: Option<DeepseekSettingsContent>,
     pub google: Option<GoogleSettingsContent>,
     pub antigravity: Option<AntigravitySettingsContent>,
+    pub cursor: Option<CursorSettingsContent>,
     #[serde(rename = "llama.cpp")]
     pub llama_cpp: Option<LlamaCppSettingsContent>,
     pub lmstudio: Option<LmStudioSettingsContent>,
@@ -482,6 +483,23 @@ pub struct AntigravityAvailableModel {
     pub display_name: Option<String>,
     pub max_tokens: u64,
     pub mode: Option<ModelMode>,
+}
+
+#[with_fallible_options]
+#[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema, MergeFrom)]
+pub struct CursorSettingsContent {
+    pub api_url: Option<String>,
+    pub available_models: Option<Vec<CursorAvailableModel>>,
+    pub custom_headers: Option<HashMap<String, String>>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct CursorAvailableModel {
+    pub name: String,
+    pub display_name: Option<String>,
+    pub max_tokens: u64,
+    pub max_output_tokens: Option<u64>,
 }
 
 #[with_fallible_options]

@@ -6,11 +6,12 @@ use settings::RegisterSetting;
 use crate::provider::{
     anthropic, anthropic::AnthropicSettings, anthropic_compatible::AnthropicCompatibleSettings,
     antigravity::AntigravitySettings, bedrock, bedrock::AmazonBedrockSettings,
-    cloud::ZedDotDevSettings, deepseek::DeepSeekSettings, google::GoogleSettings,
-    llama_cpp::LlamaCppSettings, lmstudio::LmStudioSettings, mistral, mistral::MistralSettings,
-    ollama::OllamaSettings, open_ai::OpenAiSettings, open_ai_compatible::OpenAiCompatibleSettings,
-    open_router, open_router::OpenRouterSettings, opencode, opencode::OpenCodeSettings,
-    resolve_custom_headers, vercel_ai_gateway::VercelAiGatewaySettings, x_ai::XAiSettings,
+    cloud::ZedDotDevSettings, cursor::CursorSettings, deepseek::DeepSeekSettings,
+    google::GoogleSettings, llama_cpp::LlamaCppSettings, lmstudio::LmStudioSettings, mistral,
+    mistral::MistralSettings, ollama::OllamaSettings, open_ai::OpenAiSettings,
+    open_ai_compatible::OpenAiCompatibleSettings, open_router, open_router::OpenRouterSettings,
+    opencode, opencode::OpenCodeSettings, resolve_custom_headers,
+    vercel_ai_gateway::VercelAiGatewaySettings, x_ai::XAiSettings,
 };
 
 #[derive(Debug, RegisterSetting)]
@@ -21,6 +22,7 @@ pub struct AllLanguageModelSettings {
     pub deepseek: DeepSeekSettings,
     pub google: GoogleSettings,
     pub antigravity: AntigravitySettings,
+    pub cursor: CursorSettings,
     pub llama_cpp: LlamaCppSettings,
     pub lmstudio: LmStudioSettings,
     pub mistral: MistralSettings,
@@ -56,6 +58,7 @@ impl settings::Settings for AllLanguageModelSettings {
         let deepseek = language_models.deepseek.unwrap();
         let google = language_models.google.unwrap();
         let antigravity = language_models.antigravity.unwrap_or_default();
+        let cursor = language_models.cursor.unwrap_or_default();
         let llama_cpp = language_models.llama_cpp.unwrap();
         let lmstudio = language_models.lmstudio.unwrap();
         let mistral = language_models.mistral.unwrap();
@@ -127,6 +130,13 @@ impl settings::Settings for AllLanguageModelSettings {
                 }),
                 available_models: antigravity.available_models.unwrap_or_default(),
                 custom_headers: custom_headers_from("Antigravity", antigravity.custom_headers, &[]),
+            },
+            cursor: CursorSettings {
+                api_url: cursor
+                    .api_url
+                    .unwrap_or_else(|| "http://127.0.0.1:32124/v1".to_string()),
+                available_models: cursor.available_models.unwrap_or_default(),
+                custom_headers: custom_headers_from("Cursor", cursor.custom_headers, &[]),
             },
             llama_cpp: LlamaCppSettings {
                 api_url: llama_cpp.api_url.unwrap(),
