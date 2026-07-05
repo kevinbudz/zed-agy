@@ -554,8 +554,10 @@ impl AntigravityModel {
 
     fn max_token_count(&self) -> u64 {
         match self {
-            Self::Custom { max_tokens, .. } => (*max_tokens).min(200_000),
-            _ => 200_000,
+            Self::ClaudeOpus4_6 | Self::ClaudeSonnet4_6 => 200_000,
+            Self::Gemini31Pro | Self::Gemini35Flash => 400_000,
+            Self::GptOss120B => 128_000,
+            Self::Custom { max_tokens, .. } => *max_tokens,
         }
     }
 }
