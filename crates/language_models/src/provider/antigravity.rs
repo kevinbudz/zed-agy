@@ -31,8 +31,7 @@ use google_ai::{GenerateContentResponse, GoogleModelMode, Part};
 
 // Constants
 pub const PROVIDER_ID: LanguageModelProviderId = LanguageModelProviderId::new("antigravity");
-pub const PROVIDER_NAME: LanguageModelProviderName =
-    LanguageModelProviderName::new("Google Antigravity");
+pub const PROVIDER_NAME: LanguageModelProviderName = LanguageModelProviderName::new("Antigravity");
 
 const ANTIGRAVITY_CLIENT_ID_ENV_VAR: &str = "ZED_ANTIGRAVITY_CLIENT_ID";
 const ANTIGRAVITY_CLIENT_SECRET_ENV_VAR: &str = "ZED_ANTIGRAVITY_CLIENT_SECRET";
@@ -202,7 +201,7 @@ impl LanguageModelProvider for AntigravityLanguageModelProvider {
     }
 
     fn icon(&self) -> IconOrSvg {
-        IconOrSvg::Icon(IconName::AiGoogle)
+        IconOrSvg::Icon(IconName::AiAntigravity)
     }
 
     fn default_model(&self, _cx: &App) -> Option<Arc<dyn LanguageModel>> {
@@ -555,11 +554,8 @@ impl AntigravityModel {
 
     fn max_token_count(&self) -> u64 {
         match self {
-            Self::ClaudeOpus4_6 | Self::ClaudeSonnet4_6 => 200_000,
-            Self::Gemini31Pro | Self::Gemini35Flash => 1_048_576,
-            Self::GptOss120B => 131_072,
-
-            Self::Custom { max_tokens, .. } => *max_tokens,
+            Self::Custom { max_tokens, .. } => (*max_tokens).min(200_000),
+            _ => 200_000,
         }
     }
 }
