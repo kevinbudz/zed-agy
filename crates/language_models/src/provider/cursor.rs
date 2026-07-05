@@ -167,6 +167,7 @@ fn start_cursor_proxy(cx: &mut App) -> Option<ProxyProcess> {
     };
 
     cmd.current_dir(&opencode_cursor_dir)
+        .env("CURSOR_ACP_REUSE_EXISTING_PROXY", "false")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
