@@ -9826,7 +9826,6 @@ dependencies = [
  "credentials_provider",
  "db",
  "deepseek",
- "dirs",
  "extension",
  "extension_host",
  "feature_flags",
@@ -9850,7 +9849,6 @@ dependencies = [
  "open_router",
  "opencode",
  "parking_lot",
- "paths",
  "pretty_assertions",
  "rand 0.9.4",
  "release_channel",
@@ -9866,7 +9864,6 @@ dependencies = [
  "ui_input",
  "url",
  "util",
- "which 6.0.3",
  "x_ai",
 ]
 

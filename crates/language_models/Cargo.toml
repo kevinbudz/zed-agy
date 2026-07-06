@@ -32,8 +32,6 @@ copilot_chat.workspace = true
 copilot_ui.workspace = true
 credentials_provider.workspace = true
 deepseek = { workspace = true, features = ["schemars"] }
-dirs.workspace = true
-paths.workspace = true
 extension.workspace = true
 extension_host.workspace = true
 fs.workspace = true
@@ -69,7 +67,6 @@ ui.workspace = true
 ui_input.workspace = true
 url.workspace = true
 util.workspace = true
-which.workspace = true
 x_ai = { workspace = true, features = ["schemars"] }
 
 [dev-dependencies]
