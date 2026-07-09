@@ -10,7 +10,7 @@ use language_model::{
     LanguageModelCompletionEvent, LanguageModelEffortLevel, LanguageModelId, LanguageModelName,
     LanguageModelProvider, LanguageModelProviderId, LanguageModelProviderName,
     LanguageModelProviderState, LanguageModelRequest, LanguageModelToolChoice,
-    LanguageModelToolSchemaFormat, ProviderSettingsView, RateLimiter,
+    LanguageModelToolSchemaFormat, ProviderSettingsView, RateLimiter, Speed,
 };
 use open_ai::ResponseStreamEvent;
 use serde::{Deserialize, Serialize};
@@ -288,19 +288,31 @@ impl LanguageModelProvider for XaiSubscribedProvider {
 enum GrokSubscriptionModel {
     GrokBuild,
     Grok45,
-    Grok43,
+    /// Cursor's Composer 2.5. Standard and fast variants share this catalog
+    /// entry; Fast Mode selects `grok-composer-2.5-fast` at request time.
+    Composer25,
 }
 
 impl GrokSubscriptionModel {
     fn all() -> Vec<Self> {
-        vec![Self::GrokBuild, Self::Grok45, Self::Grok43]
+        vec![Self::GrokBuild, Self::Grok45, Self::Composer25]
     }
 
     fn id(&self) -> &str {
         match self {
             Self::GrokBuild => "grok-build-0.1",
             Self::Grok45 => "grok-4.5",
-            Self::Grok43 => "grok-4.3",
+            Self::Composer25 => "grok-composer-2.5",
+        }
+    }
+
+    fn request_model_id(&self, speed: Option<Speed>) -> &str {
+        match self {
+            Self::Composer25 => match speed {
+                Some(Speed::Fast) => "grok-composer-2.5-fast",
+                Some(Speed::Standard) | None => "grok-composer-2.5",
+            },
+            other => other.id(),
         }
     }
 
@@ -308,7 +320,7 @@ impl GrokSubscriptionModel {
         match self {
             Self::GrokBuild => "Grok Build",
             Self::Grok45 => "Grok 4.5",
-            Self::Grok43 => "Grok 4.3",
+            Self::Composer25 => "Composer 2.5",
         }
     }
 
@@ -317,7 +329,8 @@ impl GrokSubscriptionModel {
             Self::GrokBuild => 256_000,
             // https://docs.x.ai/developers/models/grok-4.5
             Self::Grok45 => 500_000,
-            Self::Grok43 => 1_000_000,
+            // Cursor Composer 2.5 context window (standard and fast).
+            Self::Composer25 => 200_000,
         }
     }
 
@@ -326,7 +339,8 @@ impl GrokSubscriptionModel {
     }
 
     fn supports_images(&self) -> bool {
-        true
+        // Composer 2.5 is text-only; Grok models accept images.
+        !matches!(self, Self::Composer25)
     }
 
     fn supports_tools(&self) -> bool {
@@ -338,7 +352,11 @@ impl GrokSubscriptionModel {
     }
 
     fn supports_reasoning_effort(&self) -> bool {
-        matches!(self, Self::Grok45 | Self::Grok43)
+        matches!(self, Self::Grok45)
+    }
+
+    fn supports_fast_mode(&self) -> bool {
+        matches!(self, Self::Composer25)
     }
 
     fn requires_json_schema_subset(&self) -> bool {
@@ -510,6 +528,10 @@ impl LanguageModel for XaiSubscribedLanguageModel {
         self.model.supports_reasoning_effort()
     }
 
+    fn supports_fast_mode(&self) -> bool {
+        self.model.supports_fast_mode()
+    }
+
     fn supported_effort_levels(&self) -> Vec<LanguageModelEffortLevel> {
         supported_thinking_effort_levels(&self.model)
     }
@@ -540,7 +562,7 @@ impl LanguageModel for XaiSubscribedLanguageModel {
 
     fn stream_completion(
         &self,
-        request: LanguageModelRequest,
+        mut request: LanguageModelRequest,
         cx: &AsyncApp,
     ) -> BoxFuture<
         'static,
@@ -552,10 +574,14 @@ impl LanguageModel for XaiSubscribedLanguageModel {
             LanguageModelCompletionError,
         >,
     > {
+        let model_id = self.model.request_model_id(request.speed).to_string();
+        // Fast Mode is mapped to a different model id for Composer; do not
+        // forward `service_tier` (OpenAI priority) to the xAI endpoint.
+        request.speed = None;
         let reasoning_effort = reasoning_effort_for_request(&request, &self.model);
         let request = crate::provider::open_ai::into_open_ai(
             request,
-            self.model.id(),
+            &model_id,
             self.model.supports_parallel_tool_calls(),
             /*supports_prompt_cache_key*/ false,
             self.max_output_tokens(),
@@ -1161,21 +1187,36 @@ mod tests {
                 .iter()
                 .map(|m| m.id())
                 .collect::<Vec<_>>(),
-            vec!["grok-build-0.1", "grok-4.5", "grok-4.3"]
+            vec!["grok-build-0.1", "grok-4.5", "grok-composer-2.5"]
         );
     }
 
     #[test]
-    fn grok_45_and_43_support_selectable_thinking_effort_levels() {
-        for model in [GrokSubscriptionModel::Grok45, GrokSubscriptionModel::Grok43] {
-            let effort_levels = supported_thinking_effort_levels(&model);
-            let values = effort_levels
-                .iter()
-                .map(|level| level.value.as_ref())
-                .collect::<Vec<_>>();
+    fn composer_25_fast_mode_selects_fast_model_id() {
+        let model = GrokSubscriptionModel::Composer25;
+        assert!(model.supports_fast_mode());
+        assert_eq!(model.request_model_id(None), "grok-composer-2.5");
+        assert_eq!(
+            model.request_model_id(Some(Speed::Standard)),
+            "grok-composer-2.5"
+        );
+        assert_eq!(
+            model.request_model_id(Some(Speed::Fast)),
+            "grok-composer-2.5-fast"
+        );
+        assert!(!model.supports_images());
+        assert!(!model.supports_reasoning_effort());
+    }
 
-            assert_eq!(values, ["low", "medium", "high"], "model={}", model.id());
-        }
+    #[test]
+    fn grok_45_supports_selectable_thinking_effort_levels() {
+        let effort_levels = supported_thinking_effort_levels(&GrokSubscriptionModel::Grok45);
+        let values = effort_levels
+            .iter()
+            .map(|level| level.value.as_ref())
+            .collect::<Vec<_>>();
+
+        assert_eq!(values, ["low", "medium", "high"]);
     }
 
     #[test]
