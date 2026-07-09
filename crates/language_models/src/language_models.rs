@@ -32,6 +32,7 @@ use crate::provider::openai_subscribed::OpenAiSubscribedProvider;
 use crate::provider::opencode::OpenCodeLanguageModelProvider;
 use crate::provider::vercel_ai_gateway::VercelAiGatewayLanguageModelProvider;
 use crate::provider::x_ai::XAiLanguageModelProvider;
+use crate::provider::xai_subscribed::XaiSubscribedProvider;
 pub use crate::settings::*;
 
 pub fn init(user_store: Entity<UserStore>, client: Arc<Client>, cx: &mut App) {
@@ -279,6 +280,15 @@ fn register_language_model_providers(
     );
     registry.register_provider(
         Arc::new(GoogleLanguageModelProvider::new(
+            client.http_client(),
+            credentials_provider.clone(),
+            cx,
+        )),
+        cx,
+    );
+    // Sorts immediately after Google AI in the LLM Providers list (BTreeMap by id).
+    registry.register_provider(
+        Arc::new(XaiSubscribedProvider::new(
             client.http_client(),
             credentials_provider.clone(),
             cx,
