@@ -1,26 +1,6 @@
 # zed-agy
 
-This is a fork of Zed that adds subscription-backed LLM providers for Zed Agent threads.
-
-## Providers
-
-### Antigravity
-
-Adds support for Antigravity as a provider. ***This kind of integration violates Google's TOS, and can risk you getting blacklisted from Antigravity***. That being said, there are safeguards in place, like matching/lowering context windows to be more in-line with what Antigravity provides.
-
-In this case, Sonnet/Opus models give you 200k context, Flash/Pro gives you 400k, and GPT-OSS; 128k.
-
-### Grok Subscription (SuperGrok / X Premium+)
-
-Sign in with your SuperGrok or X Premium+ account via xAI's official device-code OAuth flow (same client used by OpenCode, Kilo, Hermes, and OpenClaw). No `XAI_API_KEY` is required.
-
-1. Build and run this fork.
-2. Open **Settings → AI → LLM Providers → Grok Subscription**.
-3. Click **Sign In**, approve access in the browser, then start a **New Zed Agent** thread and pick a Grok model (defaults to **Grok Build**).
-
-API-key xAI access remains available under the separate **xAI** provider.
-
-Note: xAI may gate OAuth inference by subscription tier or quota. If sign-in works but requests return HTTP 403, use the API-key **xAI** provider instead (or check your plan at [x.ai/grok](https://x.ai/grok)).
+This is a fork of Zed that adds supports support use of SuperGrok and Antigravity subscriptions.
 
 ---
 
@@ -40,6 +20,6 @@ I do not intend on packaging binaries for this fork. Please refer to the 'Instal
 
 ---
 
-### Credits
+### Disclaimer
 
-- [NoeFabris](https://github.com/NoeFabris) for their [opencode-antigravity-auth](https://github.com/NoeFabris/opencode-antigravity-auth) repository. A lot of logic is taken from that.
+These are not officially supported by either provider. For xAI, this doesn't explicitly violate their terms of service. For Antigravity, though; it does. Use at your own discretion. There is risk of getting blacklisted from said services.
