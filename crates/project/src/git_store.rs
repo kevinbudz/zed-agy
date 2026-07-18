@@ -35,10 +35,11 @@ use git::{
     parse_git_remote_url,
     repository::{
         Branch, BranchesScanResult, CommitData, CommitDetails, CommitDiff, CommitFile,
-        CommitOptions, CreateWorktreeTarget, DiffType, FetchOptions, FileHistoryChangedFileSets,
-        GitCommitTemplate, GitRepository, GitRepositoryCheckpoint, InitialGraphCommitData,
-        LogOrder, LogSource, PushOptions, Remote, RemoteCommandOutput, RepoPath, ResetMode,
-        SearchCommitArgs, UpstreamTrackingStatus, Worktree as GitWorktree, delete_branch_flag,
+        CommitOptions, CreateWorktreeTarget, DiffStatType, DiffType, FetchOptions,
+        FileHistoryChangedFileSets, GitCommitTemplate, GitRepository, GitRepositoryCheckpoint,
+        InitialGraphCommitData, LogOrder, LogSource, PushOptions, Remote, RemoteCommandOutput,
+        RepoPath, ResetMode, SearchCommitArgs, UpstreamTrackingStatus, Worktree as GitWorktree,
+        delete_branch_flag,
     },
     stash::{GitStash, StashEntry},
     status::{
@@ -254,7 +255,7 @@ impl language::File for IndexTextFile {
         rpc::proto::File {
             worktree_id: self.worktree_id.to_proto(),
             entry_id: None,
-            path: self.path.as_ref().to_proto(),
+            path: self.path.as_ref().as_unix_str().to_owned(),
             mtime: None,
             is_deleted: false,
             is_historic: true,
@@ -318,6 +319,8 @@ pub struct StatusEntry {
     pub repo_path: RepoPath,
     pub status: FileStatus,
     pub diff_stat: Option<DiffStat>,
+    pub staged_diff_stat: Option<DiffStat>,
+    pub unstaged_diff_stat: Option<DiffStat>,
 }
 
 impl StatusEntry {
@@ -336,11 +339,15 @@ impl StatusEntry {
         };
 
         proto::StatusEntry {
-            repo_path: self.repo_path.to_proto(),
+            repo_path: self.repo_path.as_unix_str().to_owned(),
             simple_status,
             status: Some(status_to_proto(self.status)),
             diff_stat_added: self.diff_stat.map(|ds| ds.added),
             diff_stat_deleted: self.diff_stat.map(|ds| ds.deleted),
+            staged_diff_stat_added: self.staged_diff_stat.map(|ds| ds.added),
+            staged_diff_stat_deleted: self.staged_diff_stat.map(|ds| ds.deleted),
+            unstaged_diff_stat_added: self.unstaged_diff_stat.map(|ds| ds.added),
+            unstaged_diff_stat_deleted: self.unstaged_diff_stat.map(|ds| ds.deleted),
         }
     }
 }
@@ -355,10 +362,24 @@ impl TryFrom<proto::StatusEntry> for StatusEntry {
             (Some(added), Some(deleted)) => Some(DiffStat { added, deleted }),
             _ => None,
         };
+        let staged_diff_stat = match (value.staged_diff_stat_added, value.staged_diff_stat_deleted)
+        {
+            (Some(added), Some(deleted)) => Some(DiffStat { added, deleted }),
+            _ => None,
+        };
+        let unstaged_diff_stat = match (
+            value.unstaged_diff_stat_added,
+            value.unstaged_diff_stat_deleted,
+        ) {
+            (Some(added), Some(deleted)) => Some(DiffStat { added, deleted }),
+            _ => None,
+        };
         Ok(Self {
             repo_path,
             status,
             diff_stat,
+            staged_diff_stat,
+            unstaged_diff_stat,
         })
     }
 }
@@ -3540,7 +3561,7 @@ impl GitStore {
 
         let branch = repository_handle
             .update(&mut cx, |repository_handle, _| {
-                repository_handle.default_branch(false)
+                repository_handle.default_branch(envelope.payload.include_remote_name)
             })
             .await??
             .map(Into::into);
@@ -3825,7 +3846,7 @@ impl GitStore {
                 .files
                 .into_iter()
                 .map(|file| proto::CommitFile {
-                    path: file.path.to_proto(),
+                    path: file.path.as_unix_str().to_owned(),
                     old_text: file.old_text,
                     new_text: file.new_text,
                     is_binary: file.is_binary,
@@ -4023,7 +4044,7 @@ impl GitStore {
                 .entries
                 .into_iter()
                 .map(|(path, status)| proto::TreeDiffStatus {
-                    path: path.as_ref().to_proto(),
+                    path: path.as_ref().as_unix_str().to_owned(),
                     status: match status {
                         TreeDiffStatus::Added {} => proto::tree_diff_status::Status::Added.into(),
                         TreeDiffStatus::Modified { .. } => {
@@ -5109,7 +5130,7 @@ impl RepositorySnapshot {
                 .merge
                 .merge_heads_by_conflicted_path
                 .iter()
-                .map(|(repo_path, _)| repo_path.to_proto())
+                .map(|(repo_path, _)| repo_path.as_unix_str().to_owned())
                 .collect(),
             merge_message: self.merge.message.as_ref().map(|msg| msg.to_string()),
             project_id,
@@ -5165,13 +5186,13 @@ impl RepositorySnapshot {
                             current_new_entry = new_statuses.next();
                         }
                         Ordering::Greater => {
-                            removed_statuses.push(old_entry.repo_path.to_proto());
+                            removed_statuses.push(old_entry.repo_path.as_unix_str().to_owned());
                             current_old_entry = old_statuses.next();
                         }
                     }
                 }
                 (None, Some(old_entry)) => {
-                    removed_statuses.push(old_entry.repo_path.to_proto());
+                    removed_statuses.push(old_entry.repo_path.as_unix_str().to_owned());
                     current_old_entry = old_statuses.next();
                 }
                 (Some(new_entry), None) => {
@@ -5196,7 +5217,7 @@ impl RepositorySnapshot {
                 .merge
                 .merge_heads_by_conflicted_path
                 .iter()
-                .map(|(path, _)| path.to_proto())
+                .map(|(path, _)| path.as_unix_str().to_owned())
                 .collect(),
             merge_message: self.merge.message.as_ref().map(|msg| msg.to_string()),
             project_id,
@@ -6051,7 +6072,7 @@ impl Repository {
                                             commit,
                                             paths: paths
                                                 .into_iter()
-                                                .map(|p| p.to_proto())
+                                                .map(|p| p.as_unix_str().to_owned())
                                                 .collect(),
                                         })
                                         .await?;
@@ -7013,7 +7034,9 @@ impl Repository {
                                                 repository_id: id.to_proto(),
                                                 paths: entries
                                                     .into_iter()
-                                                    .map(|repo_path| repo_path.to_proto())
+                                                    .map(|repo_path| {
+                                                        repo_path.as_unix_str().to_owned()
+                                                    })
                                                     .collect(),
                                             })
                                             .await
@@ -7026,7 +7049,9 @@ impl Repository {
                                                 repository_id: id.to_proto(),
                                                 paths: entries
                                                     .into_iter()
-                                                    .map(|repo_path| repo_path.to_proto())
+                                                    .map(|repo_path| {
+                                                        repo_path.as_unix_str().to_owned()
+                                                    })
                                                     .collect(),
                                             })
                                             .await
@@ -7157,7 +7182,7 @@ impl Repository {
                                     repository_id: id.to_proto(),
                                     paths: entries
                                         .into_iter()
-                                        .map(|repo_path| repo_path.to_proto())
+                                        .map(|repo_path| repo_path.as_unix_str().to_owned())
                                         .collect(),
                                 })
                                 .await?;
@@ -7245,7 +7270,7 @@ impl Repository {
         is_dir: bool,
     ) -> oneshot::Receiver<Result<()>> {
         let work_dir = self.snapshot.work_directory_abs_path.clone();
-        let path_display = repo_path.as_ref().display(PathStyle::Posix);
+        let path_display = repo_path.as_ref().display(PathStyle::Unix);
         let file_path_str = if is_dir {
             format!("{}/", path_display)
         } else {
@@ -7279,7 +7304,7 @@ impl Repository {
         is_dir: bool,
     ) -> oneshot::Receiver<Result<()>> {
         let repository_dir = self.snapshot.repository_dir_abs_path.clone();
-        let path_display = repo_path.as_ref().display(PathStyle::Posix);
+        let path_display = repo_path.as_ref().display(PathStyle::Unix);
         let file_path_str = if is_dir {
             format!("{}/", path_display)
         } else {
@@ -7363,6 +7388,11 @@ impl Repository {
         })
     }
 
+    // Kept for wire compatibility: older remote clients run the pre-commit hook explicitly
+    // via `proto::RunGitHook` before committing. New code lets `git commit` run hooks itself.
+    //
+    // TODO: remove together with `proto::RunGitHook` once all supported peers commit without
+    // sending it (see the deprecation note on the message in git.proto).
     pub fn run_hook(&mut self, hook: RunHook, _cx: &mut App) -> oneshot::Receiver<Result<()>> {
         let id = self.id;
         self.send_job(
@@ -7397,20 +7427,16 @@ impl Repository {
         name_and_email: Option<(SharedString, SharedString)>,
         options: CommitOptions,
         askpass: AskPassDelegate,
-        cx: &mut App,
+        _cx: &mut App,
     ) -> oneshot::Receiver<Result<()>> {
         let id = self.id;
         let askpass_delegates = self.askpass_delegates.clone();
         let askpass_id = util::post_inc(&mut self.latest_askpass_id);
 
-        let rx = self.run_hook(RunHook::PreCommit, cx);
-
         self.send_job(
             "commit",
             Some("git commit".into()),
             move |git_repo, _cx| async move {
-                rx.await??;
-
                 match git_repo {
                     RepositoryState::Local(LocalRepositoryState {
                         backend,
@@ -7722,7 +7748,7 @@ impl Repository {
                             .request(proto::SetIndexText {
                                 project_id: project_id.0,
                                 repository_id: id.to_proto(),
-                                path: path.to_proto(),
+                                path: path.as_unix_str().to_owned(),
                                 text: content,
                             })
                             .await?;
@@ -8349,6 +8375,7 @@ impl Repository {
                         .request(proto::GetDefaultBranch {
                             project_id: project_id.0,
                             repository_id: id.to_proto(),
+                            include_remote_name,
                         })
                         .await?;
 
@@ -8405,7 +8432,7 @@ impl Repository {
                             };
                             Some((
                                 RepoPath::from_rel_path(
-                                    &RelPath::from_proto(&entry.path).log_err()?,
+                                    RelPath::from_unix_str(&entry.path).log_err()?,
                                 ),
                                 status,
                             ))
@@ -8734,7 +8761,7 @@ impl Repository {
             .into_iter()
             .filter_map(|path| {
                 Some(sum_tree::Edit::Remove(PathKey(
-                    RelPath::from_proto(&path).log_err()?,
+                    RelPath::from_unix_str(&path).log_err()?.into(),
                 )))
             })
             .chain(
@@ -9132,20 +9159,29 @@ impl Repository {
                         let changed_paths_vec = changed_paths.iter().cloned().collect::<Vec<_>>();
 
                         let status_task = backend.status(&changed_paths_vec);
-                        let diff_stat_future = if has_head {
-                            backend.diff_stat(&changed_paths_vec)
-                        } else {
-                            future::ready(Ok(status::GitDiffStat {
-                                entries: Arc::default(),
-                            }))
-                            .boxed()
+                        let diff_stat_future = |diff| {
+                            if has_head {
+                                backend.diff_stat(diff, &changed_paths_vec)
+                            } else {
+                                future::ready(Ok(status::GitDiffStat::default())).boxed()
+                            }
                         };
 
-                        let (statuses, diff_stats) =
-                            futures::future::try_join(status_task, diff_stat_future).await?;
+                        let (statuses, diff_stats, staged_diff_stats, unstaged_diff_stats) =
+                            futures::future::try_join4(
+                                status_task,
+                                diff_stat_future(DiffStatType::HeadToWorktree),
+                                diff_stat_future(DiffStatType::HeadToIndex),
+                                diff_stat_future(DiffStatType::IndexToWorktree),
+                            )
+                            .await?;
 
                         let diff_stats: HashMap<RepoPath, DiffStat> =
                             HashMap::from_iter(diff_stats.entries.into_iter().cloned());
+                        let staged_diff_stats: HashMap<RepoPath, DiffStat> =
+                            HashMap::from_iter(staged_diff_stats.entries.into_iter().cloned());
+                        let unstaged_diff_stats: HashMap<RepoPath, DiffStat> =
+                            HashMap::from_iter(unstaged_diff_stats.entries.into_iter().cloned());
 
                         let mut changed_path_statuses = Vec::new();
                         let prev_statuses = prev_snapshot.statuses_by_path.clone();
@@ -9176,10 +9212,17 @@ impl Repository {
 
                         for (repo_path, status) in &*statuses.entries {
                             let current_diff_stat = diff_stats.get(repo_path).copied();
+                            let current_staged_diff_stat =
+                                staged_diff_stats.get(repo_path).copied();
+                            let current_unstaged_diff_stat =
+                                unstaged_diff_stats.get(repo_path).copied();
 
                             if cursor.seek_forward(&PathTarget::Path(repo_path), Bias::Left)
                                 && cursor.item().is_some_and(|entry| {
-                                    entry.status == *status && entry.diff_stat == current_diff_stat
+                                    entry.status == *status
+                                        && entry.diff_stat == current_diff_stat
+                                        && entry.staged_diff_stat == current_staged_diff_stat
+                                        && entry.unstaged_diff_stat == current_unstaged_diff_stat
                                 })
                             {
                                 continue;
@@ -9189,6 +9232,8 @@ impl Repository {
                                 repo_path: repo_path.clone(),
                                 status: *status,
                                 diff_stat: current_diff_stat,
+                                staged_diff_stat: current_staged_diff_stat,
+                                unstaged_diff_stat: current_unstaged_diff_stat,
                             }));
                         }
                         anyhow::Ok(changed_path_statuses)
@@ -9325,7 +9370,7 @@ fn format_job_key(key: &GitJobKey) -> SharedString {
                 .iter()
                 .map(|p| {
                     let rel: &RelPath = p;
-                    format!("{}", AsRef::<Path>::as_ref(rel).display())
+                    rel.display(PathStyle::local())
                 })
                 .collect();
             format!("WriteIndex({})", paths_str.join(", ")).into()
@@ -9404,7 +9449,7 @@ pub fn worktrees_directory_for_repo(
     let resolved = if path_style.is_posix() {
         joined
     } else {
-        util::normalize_path(&joined)
+        path::normalize_path(&joined)
     };
     let resolved = if resolved.starts_with(repository_anchor_path) {
         resolved
@@ -9648,7 +9693,11 @@ fn deserialize_blame_buffer_response(
         .filter_map(|message| Some((git::Oid::from_bytes(&message.oid).ok()?, message.message)))
         .collect::<HashMap<_, _>>();
 
-    Some(Blame { entries, messages })
+    Some(Blame {
+        entries,
+        messages,
+        tag_names: Default::default(),
+    })
 }
 
 fn log_source_to_proto(log_source: &LogSource) -> proto::GitLogSource {
@@ -9657,7 +9706,9 @@ fn log_source_to_proto(log_source: &LogSource) -> proto::GitLogSource {
             LogSource::All => proto::git_log_source::Source::All(proto::GitLogSourceAll {}),
             LogSource::Branch(branch) => proto::git_log_source::Source::Branch(branch.to_string()),
             LogSource::Sha(sha) => proto::git_log_source::Source::Sha(sha.to_string()),
-            LogSource::Path(path) => proto::git_log_source::Source::Path(path.to_proto()),
+            LogSource::Path(path) => {
+                proto::git_log_source::Source::Path(path.as_unix_str().to_owned())
+            }
         }),
     }
 }
@@ -9903,6 +9954,11 @@ async fn append_pattern_to_ignore_file(
 
 #[cfg(any(test, feature = "test-support"))]
 impl Repository {
+    pub fn set_branch_list_for_test(&mut self, branches: Vec<Branch>, cx: &mut Context<Self>) {
+        self.snapshot.branch_list = branches.into();
+        cx.emit(RepositoryEvent::BranchListChanged);
+    }
+
     pub fn loaded_commit_data_for_test(&self) -> HashMap<Oid, CommitData> {
         self.commit_data
             .iter()
@@ -10056,11 +10112,9 @@ mod tests {
     fn test_new_worktree_path_uses_posix_style_for_remote_paths() {
         let work_dir = Path::new("/home/user/dev/lsp-tests");
         let directory =
-            worktrees_directory_for_repo(work_dir, "../worktrees", PathStyle::Posix).unwrap();
-        let directory = PathStyle::Posix
-            .join_path(&directory, "nimble-sky")
-            .unwrap();
-        let path = PathStyle::Posix.join_path(&directory, "lsp-tests").unwrap();
+            worktrees_directory_for_repo(work_dir, "../worktrees", PathStyle::Unix).unwrap();
+        let directory = PathStyle::Unix.join_path(&directory, "nimble-sky").unwrap();
+        let path = PathStyle::Unix.join_path(&directory, "lsp-tests").unwrap();
 
         assert_eq!(
             path,
@@ -10523,14 +10577,23 @@ async fn compute_snapshot(
                 .unwrap_or_default()
         }
     };
-    let diff_stat_future = {
+    let diff_stats_future = {
         let snapshot = snapshot.clone();
         let backend = backend.clone();
         async move {
             if snapshot.head_commit.is_some() {
-                backend.diff_stat(&[]).await.log_err().unwrap_or_default()
+                futures::future::join3(
+                    backend.diff_stat(DiffStatType::HeadToWorktree, &[]),
+                    backend.diff_stat(DiffStatType::HeadToIndex, &[]),
+                    backend.diff_stat(DiffStatType::IndexToWorktree, &[]),
+                )
+                .await
             } else {
-                Default::default()
+                (
+                    Ok(status::GitDiffStat::default()),
+                    Ok(status::GitDiffStat::default()),
+                    Ok(status::GitDiffStat::default()),
+                )
             }
         }
     };
@@ -10540,11 +10603,25 @@ async fn compute_snapshot(
     };
 
     let (statuses, diff_stats, stash_entries) =
-        futures::future::join3(statuses_future, diff_stat_future, stash_entries_future).await;
+        futures::future::join3(statuses_future, diff_stats_future, stash_entries_future).await;
+    let (diff_stats, staged_diff_stats, unstaged_diff_stats) = diff_stats;
+    let diff_stats = diff_stats.log_err().unwrap_or_default();
+    let staged_diff_stats = staged_diff_stats.log_err().unwrap_or_default();
+    let unstaged_diff_stats = unstaged_diff_stats.log_err().unwrap_or_default();
     log::debug!("fetched statuses, diff stats, stash entries");
 
     let diff_stat_map: HashMap<&RepoPath, DiffStat> =
         diff_stats.entries.iter().map(|(p, s)| (p, *s)).collect();
+    let staged_diff_stat_map: HashMap<&RepoPath, DiffStat> = staged_diff_stats
+        .entries
+        .iter()
+        .map(|(p, s)| (p, *s))
+        .collect();
+    let unstaged_diff_stat_map: HashMap<&RepoPath, DiffStat> = unstaged_diff_stats
+        .entries
+        .iter()
+        .map(|(p, s)| (p, *s))
+        .collect();
     let mut conflicted_paths = Vec::new();
     let statuses_by_path = SumTree::from_iter(
         statuses.entries.iter().map(|(repo_path, status)| {
@@ -10555,6 +10632,8 @@ async fn compute_snapshot(
                 repo_path: repo_path.clone(),
                 status: *status,
                 diff_stat: diff_stat_map.get(repo_path).copied(),
+                staged_diff_stat: staged_diff_stat_map.get(repo_path).copied(),
+                unstaged_diff_stat: unstaged_diff_stat_map.get(repo_path).copied(),
             }
         }),
         (),
